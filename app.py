@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 import base64
+from pathlib import Path
+import json
 
 # Настройки приложения
 st.set_page_config(
@@ -10,7 +12,7 @@ st.set_page_config(
     page_icon="📅"
 )
 
-# Стили для адаптивности
+# Стили для адаптивности и PWA
 st.markdown("""
 <style>
 @media (max-width: 768px) {
@@ -29,6 +31,21 @@ st.markdown("""
         font-size: 12px !important;
     }
 }
+
+/* Стиль для кнопки установки */
+#installButton {
+    background-color: #4CAF50;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    margin: 10px 0;
+}
+#installButton:hover {
+    background-color: #45a049;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -38,7 +55,7 @@ def create_pwa_manifest():
         "name": "Генератор графика смен",
         "short_name": "График смен",
         "description": "Приложение для создания графиков смен сотрудников",
-        "start_url": ".",
+        "start_url": "/",
         "display": "standalone",
         "background_color": "#ffffff",
         "theme_color": "#4f8bf9",
@@ -47,6 +64,11 @@ def create_pwa_manifest():
                 "src": "https://cdn-icons-png.flaticon.com/512/3652/3652191.png",
                 "sizes": "192x192",
                 "type": "image/png"
+            },
+            {
+                "src": "https://cdn-icons-png.flaticon.com/512/3652/3652191.png",
+                "sizes": "512x512",
+                "type": "image/png"
             }
         ]
     }
@@ -54,6 +76,15 @@ def create_pwa_manifest():
 
 # Основной интерфейс
 st.title("📅 Генератор графика смен по пожеланиям сотрудников")
+
+# Добавляем мета-теги для PWA в head
+st.markdown("""
+<link rel="manifest" href="/manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, viewport-fit=cover">
+""", unsafe_allow_html=True)
 
 tab1, tab2 = st.tabs(["📤 Загрузить Excel", "📝 Ввести вручную"])
 
@@ -160,7 +191,7 @@ if 'df' in locals() and not df.empty:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-# PWA установка
+# PWA установка - JavaScript код
 st.markdown("""
 <script>
 // Проверяем, поддерживает ли браузер PWA
@@ -168,7 +199,7 @@ if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('/service-worker.js')
             .then(registration => {
-                console.log('ServiceWorker registration successful');
+                console.log('ServiceWorker registration successful with scope: ', registration.scope);
             })
             .catch(err => {
                 console.log('ServiceWorker registration failed: ', err);
@@ -176,33 +207,56 @@ if ('serviceWorker' in navigator) {
     });
 }
 
-// Показываем кнопку "Установить" когда это возможно
+// Логика для кнопки установки
 let deferredPrompt;
-const addBtn = document.createElement('button');
-addBtn.style.display = 'none';
-document.body.appendChild(addBtn);
+const installButton = document.createElement('button');
+installButton.id = 'installButton';
+installButton.textContent = 'Установить приложение';
+installButton.style.display = 'none';
+document.body.appendChild(installButton);
 
 window.addEventListener('beforeinstallprompt', (e) => {
+    // Предотвращаем автоматическое отображение подсказки
     e.preventDefault();
+    // Сохраняем событие для использования позже
     deferredPrompt = e;
-    addBtn.style.display = 'block';
+    // Показываем кнопку
+    installButton.style.display = 'block';
     
-    addBtn.addEventListener('click', () => {
-        addBtn.style.display = 'none';
+    installButton.addEventListener('click', () => {
+        // Скрываем кнопку
+        installButton.style.display = 'none';
+        // Показываем подсказку установки
         deferredPrompt.prompt();
         
+        // Ждем ответа пользователя
         deferredPrompt.userChoice.then((choiceResult) => {
             if (choiceResult.outcome === 'accepted') {
-                console.log('User accepted the install prompt');
+                console.log('Пользователь принял предложение установки');
             } else {
-                console.log('User dismissed the install prompt');
+                console.log('Пользователь отклонил предложение установки');
             }
             deferredPrompt = null;
         });
     });
 });
+
+// Скрываем кнопку, если приложение уже установлено
+window.addEventListener('appinstalled', (evt) => {
+    console.log('Приложение успешно установлено');
+    installButton.style.display = 'none';
+    deferredPrompt = null;
+});
 </script>
 """, unsafe_allow_html=True)
 
-# Кнопка установки PWA
-st.button("Установить приложение", key="install_btn", help="Добавить это приложение на главный экран вашего устройства")
+# Создаем файл манифеста
+manifest = create_pwa_manifest()
+st.markdown(f"""
+<script>
+// Динамически создаем manifest.json
+const manifestUrl = URL.createObjectURL(new Blob([JSON.stringify({json.dumps(manifest)})], 
+    {{ type: 'application/json' }}));
+document.querySelector('link[rel="manifest"]').href = manifestUrl;
+</script>
+""", unsafe_allow_html=True)
